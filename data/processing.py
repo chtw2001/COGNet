@@ -7,6 +7,7 @@ from collections import defaultdict
 ##### process medications #####
 # load med data
 def med_process(med_file):
+    # med_file = '/data/mimic-iii/PRESCRIPTIONS.csv'
     """读取MIMIC原数据文件，保留pid、adm_id、data以及NDC，以DF类型返回"""
     # 读取药物文件，NDC（National Drug Code）以类别类型存储
     med_pd = pd.read_csv(med_file, dtype={'NDC':'category'})
@@ -33,24 +34,30 @@ def med_process(med_file):
 
 # medication mapping
 def ndc2atc4(med_pd):
+    # 'SUBJECT_ID', 'HADM_ID', 'STARTDATE', 'HADM_ID_Len'
     """将NDC映射到ACT4"""
     with open(ndc_rxnorm_file, 'r') as f:
         ndc2rxnorm = eval(f.read())
     # 根据ndc_rxnorm_file文件读取ndc到xnorm的映射（这个xnorm似乎等同于下面的RXCUI）
     med_pd['RXCUI'] = med_pd['NDC'].map(ndc2rxnorm)
+    # 'SUBJECT_ID', 'HADM_ID', 'STARTDATE', 'HADM_ID_Len', 'RXCUI'
     med_pd.dropna(inplace=True) # 实际上啥也没删掉
 
     rxnorm2atc = pd.read_csv(ndc2atc_file)
     rxnorm2atc = rxnorm2atc.drop(columns=['YEAR','MONTH','NDC'])    # NDC删了，直接从RXCUI映射到ATC
     # 根据RXCUI删除重复列
+    # "RXCUI","ATC4"
     rxnorm2atc.drop_duplicates(subset=['RXCUI'], inplace=True)
 
     med_pd.drop(index = med_pd[med_pd['RXCUI'].isin([''])].index, axis=0, inplace=True)     # 删除特定的RXCUI
     
     med_pd['RXCUI'] = med_pd['RXCUI'].astype('int64')   
     med_pd = med_pd.reset_index(drop=True)
+    # 'SUBJECT_ID', 'HADM_ID', 'STARTDATE', 'HADM_ID_Len', 'RXCUI', 'ATC4'
     med_pd = med_pd.merge(rxnorm2atc, on=['RXCUI'])     # 合并两个表
+    # 'SUBJECT_ID', 'HADM_ID', 'STARTDATE', 'HADM_ID_Len', 'ATC4'
     med_pd.drop(columns=['NDC', 'RXCUI'], inplace=True) # 干掉NDC\RXCUI，只剩ATC4了
+    # 'SUBJECT_ID', 'HADM_ID', 'STARTDATE', 'HADM_ID_Len', 'NDC'
     med_pd = med_pd.rename(columns={'ATC4':'NDC'})      # 重新命名为NDC
     med_pd['NDC'] = med_pd['NDC'].map(lambda x: x[:4])  # 只保留前四位
     med_pd = med_pd.drop_duplicates()    
@@ -67,6 +74,7 @@ def process_visit_lg2(med_pd):
 
 # most common medications
 def filter_300_most_med(med_pd):
+    # 동일한 NDC를 갖는 행 중 상위 300개만 사용
     # 按照NDC出现的次数降序排列，取前300
     med_count = med_pd.groupby(by=['NDC']).size().reset_index().rename(columns={0:'count'}).sort_values(by=['count'],ascending=False).reset_index(drop=True)
     med_pd = med_pd[med_pd['NDC'].isin(med_count.loc[:299, 'NDC'])]
@@ -75,6 +83,7 @@ def filter_300_most_med(med_pd):
 
 ##### process diagnosis #####
 def diag_process(diag_file):
+    # diag_file = 'DIAGNOSES_ICD.csv'
     diag_pd = pd.read_csv(diag_file)
     diag_pd.dropna(inplace=True)
     diag_pd.drop(columns=['SEQ_NUM','ROW_ID'],inplace=True)
@@ -88,12 +97,15 @@ def diag_process(diag_file):
         
         return diag_pd.reset_index(drop=True)
 
+    # 'SUBJECT_ID','HADM_ID', 'ICD9_CODE' ... 더 있을 수 있음
+    # 가장 많이 사용 된 ICD9_CODE 순서대로 2000개만 사용
     diag_pd = filter_2000_most_diag(diag_pd)
 
     return diag_pd
 
 ##### process procedure #####
 def procedure_process(procedure_file):
+    # procedure_file = 'PROCEDURES_ICD.csv'
     pro_pd = pd.read_csv(procedure_file, dtype={'ICD9_CODE':'category'})
     pro_pd.drop(columns=['ROW_ID'], inplace=True)
     pro_pd.drop_duplicates(inplace=True)
@@ -112,6 +124,9 @@ def filter_1000_most_pro(pro_pd):
 
 ###### combine three tables #####
 def combine_process(med_pd, diag_pd, pro_pd):
+    # med_pd -> 'SUBJECT_ID', 'HADM_ID', 'STARTDATE', 'HADM_ID_Len', 'NDC'
+    # diag_pd -> 'SUBJECT_ID','HADM_ID', 'ICD9_CODE' ... 더 있을 수 있음
+    # pro_pd -> 'SUBJECT_ID','HADM_ID', 'ICD9_CODE' ... 더 있을 수 있음
     """药物、症状、proc的数据结合"""
 
     med_pd_key = med_pd[['SUBJECT_ID', 'HADM_ID']].drop_duplicates()
@@ -136,6 +151,7 @@ def combine_process(med_pd, diag_pd, pro_pd):
     #     data['ICD9_CODE_Len'] = data['ICD9_CODE'].map(lambda x: len(x))
     data['NDC_Len'] = data['NDC'].map(lambda x: len(x))
 
+    # 'SUBJECT_ID', 'HADM_ID', 'STARTDATE', 'HADM_ID_Len', 'NDC', 'NDC_Len', 'ICD9_CODE' 'PRO_CODE'
     return data
 
 def statistics(data):
@@ -243,13 +259,16 @@ def create_patient_record(df, diag_voc, med_voc, pro_voc):
 def get_ddi_matrix(records, med_voc, ddi_file):
 
     TOPK = 40 # topk drug-drug interaction
+    # user recored에 존재하는 약물 중 ATC 코드만 삽입
     cid2atc_dic = defaultdict(set)
     med_voc_size = len(med_voc.idx2word)
     med_unique_word = [med_voc.idx2word[i] for i in range(med_voc_size)]    # 所有的药物的ATC4
+    # user recored에 존재하는 약물만 삽입
     atc3_atc4_dic = defaultdict(set)
     for item in med_unique_word:
         atc3_atc4_dic[item[:4]].add(item)   # 
     
+    # 약물 code 에서 첫번째 4개의 prefix가 동일한 약물에 대해서 ACT code 추가
     with open(cid_atc, 'r') as f:
         for line in f:
             line_ls = line[:-1].split(',')
@@ -266,6 +285,7 @@ def get_ddi_matrix(records, med_voc, ddi_file):
     ddi_most_pd = ddi_most_pd.iloc[-TOPK:,:]
     # ddi_most_pd = pd.DataFrame(columns=['Side Effect Name'], data=['as','asd','as'])
     fliter_ddi_df = ddi_df.merge(ddi_most_pd[['Side Effect Name']], how='inner', on=['Side Effect Name'])
+    # 상위 40개의 부작용만 필터링
     ddi_df = fliter_ddi_df[['STITCH 1','STITCH 2']].drop_duplicates().reset_index(drop=True)
 
 
@@ -317,6 +337,7 @@ if __name__ == '__main__':
     # drug code mapping files
     ndc2atc_file = './ndc2atc_level4.csv'   # NDC code to ATC-4 code mapping file，用于读取xnorm到ATC
     cid_atc = './drug-atc.csv'              # drug（CID） to ATC code mapping file，用于处理DDI表
+    # NDC를 RxNorm으로 변환
     ndc_rxnorm_file = './ndc2rxnorm_mapping.txt'    # NDC to xnorm mapping file
 
     # ddi information
@@ -331,29 +352,40 @@ if __name__ == '__main__':
     ddi_file = '/data/drug-DDI.csv'
 
     # 处理MIMIC中的药物数据
+    # 'SUBJECT_ID', 'HADM_ID', 'STARTDATE'
     med_pd = med_process(med_file)
+    # 'SUBJECT_ID', 'HADM_ID', 'STARTDATE', 'HADM_ID_Len'
     med_pd_lg2 = process_visit_lg2(med_pd).reset_index(drop=True)   # 注意这里仅仅是针对med表中出现了两次以上admission的patient
+    # 'SUBJECT_ID', 'HADM_ID', 'STARTDATE', 'HADM_ID_Len'
     med_pd = med_pd.merge(med_pd_lg2[['SUBJECT_ID']], on='SUBJECT_ID', how='inner').reset_index(drop=True) 
 
+    # 'SUBJECT_ID', 'HADM_ID', 'STARTDATE', 'HADM_ID_Len', 'NDC'
     med_pd = ndc2atc4(med_pd)
     NDCList = dill.load(open(med_structure_file, 'rb'))
+    # NDC가 idx2drug.pkl에 포함되어 있는 행만 유지
     med_pd = med_pd[med_pd.NDC.isin(list(NDCList.keys()))]
+    # 300개의 서로 다른 NDC 존재
+    # 'SUBJECT_ID', 'HADM_ID', 'STARTDATE', 'HADM_ID_Len', 'NDC'
     med_pd = filter_300_most_med(med_pd)
 
     print ('complete medication processing')
 
     # for diagnosis
+    # 2000개의 서로 다른 ICD9_CODE 존재
+    # 'SUBJECT_ID','HADM_ID', 'ICD9_CODE' ... 더 있을 수 있음
     diag_pd = diag_process(diag_file)
 
     print ('complete diagnosis processing')
 
     # for procedure
+    # 'SUBJECT_ID','HADM_ID', 'ICD9_CODE' ... 더 있을 수 있음
     pro_pd = procedure_process(procedure_file)
     # pro_pd = filter_1000_most_pro(pro_pd)
 
     print ('complete procedure processing')
 
     # combine
+    # 'SUBJECT_ID', 'HADM_ID', 'STARTDATE', 'HADM_ID_Len', 'NDC', 'NDC_Len', 'ICD9_CODE' 'PRO_CODE'
     data = combine_process(med_pd, diag_pd, pro_pd)
     statistics(data)
     data.to_pickle('data_final.pkl')

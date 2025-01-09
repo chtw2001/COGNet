@@ -5,6 +5,7 @@ import numpy as np
 # from pinky.smiles import smilin
 # from pinky.fingerprints import ecfp
 
+# index to SMILES
 NDCList = dill.load(open('./idx2drug.pkl', 'rb'))
 voc = dill.load(open('./voc_final.pkl', 'rb'))
 med_voc = voc['med_voc']
@@ -26,6 +27,7 @@ for k, v in med_voc.idx2word.items():
 NDCList[22] = {0}
 NDCList[25] = {0}
 NDCList[27] = {0}
+# 화학식인듯 하다
 fraction = []
 for k, v in med_voc.idx2word.items():
     tempF = set()
@@ -46,6 +48,7 @@ fracSet = list(set(fracSet))
 
 ddi_matrix = np.zeros((len(med_voc.idx2word), len(fracSet)))
 
+# idx와 관련 된 화학 분자 요소를 사용하여 인접 행렬 생성
 for i, fracList in enumerate(fraction):
     for frac in fracList:
         ddi_matrix[i, fracSet.index(frac)] = 1

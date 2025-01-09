@@ -20,7 +20,7 @@ from data_loader import mimic_data, pad_batch_v2_train, pad_batch_v2_eval, pad_n
 
 import sys
 sys.path.append("..")
-from COGNet_ablation import COGNet_wo_copy, COGNet_wo_visit_score, COGNet_wo_graph, COGNet_wo_diag, COGNet_wo_proc
+# from COGNet_ablation import COGNet_wo_copy, COGNet_wo_visit_score, COGNet_wo_graph, COGNet_wo_diag, COGNet_wo_proc
 from COGNet_model import COGNet, policy_network
 from util import llprint, sequence_metric, sequence_output_process, ddi_rate_score, get_n_params, output_flatten, print_result
 from recommend import eval, test
@@ -55,8 +55,12 @@ def main(args):
     voc_path = '../data/voc_final.pkl'
 
     # ehr_adj_path = '../data/weighted_ehr_adj_final.pkl'
+    
+    # records_final.pkl의 NDC 인접 행렬
     ehr_adj_path = '../data/ehr_adj_final.pkl'
+    # records_final.pkl에 포함 된 ATC CODE 인접행렬
     ddi_adj_path = '../data/ddi_A_final.pkl'
+    # records_final.pkl의 NDC index - SMILE 화학식 인접행렬
     ddi_mask_path = '../data/ddi_mask_H.pkl'
     device = torch.device('cuda')
 

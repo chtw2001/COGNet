@@ -16,6 +16,7 @@ def fix_mismatch(idx2atc, atc2ndc, ndc2atc_original_path):
         else:
             mismatch.append(v)
 
+    # atc2ndc에 없다면 추가
     for i in mismatch:
         atc2ndc = atc2ndc.append({'NDC': i, 'NDC_orig': [s.replace('-', '') for s in ndc2atc[ndc2atc.ATC4 == i].NDC.tolist()]}, ignore_index=True)
         
@@ -44,6 +45,7 @@ def atc2smiles(atc2ndc):
     for k, ndc in atc2ndc.values:
         if k not in list(atc2SMILES.keys()):
             for index, code in enumerate(ndc):
+                # 100개만 삽입
                 if index > 100: break
                 try:
                     SMILES = ndc2smiles(code)
@@ -85,6 +87,7 @@ if __name__ == '__main__':
 
     # fix atc2ndc mismatch
     ndc2atc_original_path = './ndc2atc_level4.csv'
+    # idx2atc, atc2ndc 에서 누락 된 부분을 수정
     atc2ndc = fix_mismatch(idx2atc, atc2ndc, ndc2atc_original_path)
 
     # atc2smiles

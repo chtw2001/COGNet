@@ -31,18 +31,23 @@ def transform_split(X, Y):
     return x_train, x_eval, x_test, y_train, y_eval, y_test
 
 def sequence_output_process(output_logits, filter_token):
+    # (sum(seq_length) * max_len, voc_size)
     """生成最终正确的序列，output_logits表示每个位置的prob，filter_token代表SOS与END"""
+    # 내림차순 정렬
     pind = np.argsort(output_logits, axis=-1)[:, ::-1]  # 每个位置上按概率的降序排序
 
+    # sequence마다 상위 약물 1개씩 삽입
     out_list = []   # 生成的结果
     break_flag = False
     for i in range(len(pind)):
+        # NDC
         # 顺序遍历pind上所有值
         # break_flag来判断是否退出sentence生成的循环
         if break_flag:
             break
         # 每个位置上是按降序排序好的结果
         for j in range(pind.shape[1]):
+            # med voc index
             label = pind[i][j]
             # 如果遇到了SOS或者END，就表示句子over了
             if label in filter_token:
@@ -57,6 +62,7 @@ def sequence_output_process(output_logits, filter_token):
     for idx, item in enumerate(out_list):
         y_pred_prob_tmp.append(output_logits[idx, item])
     # 将out_list中按照概率的高低将所有药物排序？
+    # 추천 약물 index. 내림차순
     sorted_predict = [x for _, x in sorted(zip(y_pred_prob_tmp, out_list), reverse=True)]
     return out_list, sorted_predict
 
@@ -97,6 +103,7 @@ def sequence_metric(y_gt, y_pred, y_prob, y_label):
     def jaccard(y_gt, y_label):
         score = []
         for b in range(y_gt.shape[0]):
+            # 인덱스만 추출
             target = np.where(y_gt[b] == 1)[0]
             out_list = y_label[b]
             inter = set(out_list) & set(target)
@@ -473,7 +480,14 @@ def buildMPNN(molecule, med_voc, radius=1, device="cpu:0"):
 
 
 
+# 실제 데이터와 model의 출력을 정리하여 반환하는 메서드
 def output_flatten(labels, logits, seq_length, m_length_matrix, med_num, END_TOKEN, device, training=True, testing=False, max_len=20):
+    # labels -> 실제 NDC 데이터, 
+    # logits -> model 출력 embedding, 
+    # seq_length -> 배치별 시퀀스 길이, 
+    # m_length_matrix -> 환자별 NDC 약물 개수, 
+    # med_num -> NDC 약물 최대 개수 + 2, 
+    # END_TOKEN -> NDC 약물 최대 개수 + 1
     '''
     labels: [batch_size, visit_num, medication_num]
     logits: [batch_size, visit_num, max_med_num, medication_vocab_size]
@@ -513,6 +527,7 @@ def output_flatten(labels, logits, seq_length, m_length_matrix, med_num, END_TOK
                 if testing:
                     logits_flatten.append(logits[j])  # beam search目前直接给出了预测结果
                 else:
+                    # max_len 만큼만 삽입
                     logits_flatten.append(logits[i,j,:max_len,:].detach().cpu().numpy())     # 注意这里手动定义了max_len
                 # cur_label = []
                 # cur_seq_length = []

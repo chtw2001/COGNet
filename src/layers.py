@@ -29,9 +29,14 @@ class GraphConvolution(nn.Module):
             self.bias.data.uniform_(-stdv, stdv)
 
     def forward(self, input, adj):
+        # 1: (voc_size, voc_size) * (voc_size, 64)
+        # 2, 3: (voc_size, 64) * (64, 64)
         support = torch.mm(input, self.weight)
+        # 1: (voc_size, voc_size) * (voc_size, 64)
+        # 2, 3: (voc_size, 64)
         output = torch.mm(adj, support)
         if self.bias is not None:
+            # 1, 2, 3: (voc_size, 64)
             return output + self.bias
         else:
             return output
@@ -59,11 +64,21 @@ class SelfAttend(nn.Module):
         :param seq_lens: shape [batch_size, seq_length]
         :return: shape [batch_size, seq_length, embedding_size]
         """
+        # seq_masks -> (batch_size * 환자의 최대 시퀀스, 환자의 최대 ICD9_CODE 개수). 실제 인덱스는 0, 관련 없는것은 -1e9
+        
+        # seqs -> (batch_size * max_visit_num, max_diag_num, 64)
+        # -> (batch_size * max_visit_num, max_diag_num, 32)
+        # -> (batch_size * max_visit_num, max_diag_num, 1) 
+        # -> (batch_size * max_visit_num, max_diag_num)
         gates = self.gate_layer(self.h1(seqs)).squeeze(-1)
         if seq_masks is not None:
             gates = gates + seq_masks
+        # 관련 있는 약물에 대해서 확률 높게 생성
         p_attn = F.softmax(gates, dim=-1)
+        # (batch_size * max_visit_num, max_diag_num, 1)
         p_attn = p_attn.unsqueeze(-1)
+        # attention 가중치 곱
         h = seqs * p_attn
+        # (batch_size * max_visit_num, 64)
         output = torch.sum(h, dim=1)
         return output

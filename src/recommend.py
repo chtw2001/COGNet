@@ -214,6 +214,7 @@ def eval(model, eval_dataloader, voc_size, epoch, device, TOKENS, args):
         labels, predictions = output_flatten(medications, output_logits, seq_length, m_length_matrix, voc_size[2], END_TOKEN, device, training=False, testing=False, max_len=args.max_len)
 
         y_gt = []       # groud truth 表示正确的label   0-1序列
+        # 추천 NDC index (45, voc_size[2])
         y_pred = []     # 预测的结果    0-1序列
         y_pred_prob = []    # 预测的每一个药物的平均概率，非0-1序列
         y_pred_label = []   # 预测的结果，非0-1序列
@@ -225,8 +226,11 @@ def eval(model, eval_dataloader, voc_size, epoch, device, TOKENS, args):
 
             # label: med set
             # prediction: [med_num, probability]
+            # out_list -> NDC별 추천 약물 index
+            # sorted_predict -> NDC별 추천 약물 index. 내림차순 정렬됨.
             out_list, sorted_predict = sequence_output_process(prediction, [voc_size[2], voc_size[2]+1])
-            y_pred_label.append(sorted(sorted_predict))
+            y_pred_label.append(sorted(sorted_predict)) # 왜 다시 오름차순으로 정렬하지?
+            # NDC별 med voc에 있는 약물 추천 확률의 평균값을 probability로 설정
             y_pred_prob.append(np.mean(prediction[:, :-2], axis=0))
 
             # prediction label

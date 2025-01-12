@@ -56,18 +56,18 @@ def main(args):
 
     # ehr_adj_path = '../data/weighted_ehr_adj_final.pkl'
     
-    # records_final.pkl의 NDC 인접 행렬
     ehr_adj_path = '../data/ehr_adj_final.pkl'
-    # records_final.pkl에 포함 된 ATC CODE 인접행렬
     ddi_adj_path = '../data/ddi_A_final.pkl'
-    # records_final.pkl의 NDC index - SMILE 화학식 인접행렬
     ddi_mask_path = '../data/ddi_mask_H.pkl'
     device = torch.device('cuda')
 
     data = dill.load(open(data_path, 'rb'))
     voc = dill.load(open(voc_path, 'rb'))
+    # records_final.pkl의 NDC 인접 행렬
     ehr_adj = dill.load(open(ehr_adj_path, 'rb'))
+    # records_final.pkl에 포함 된 ATC CODE 인접행렬
     ddi_adj = dill.load(open(ddi_adj_path, 'rb'))
+    # records_final.pkl의 NDC index - SMILE 화학식 인접행렬
     ddi_mask_H = dill.load(open(ddi_mask_path, 'rb'))
 
     diag_voc, pro_voc, med_voc = voc['diag_voc'], voc['pro_voc'], voc['med_voc']
@@ -76,6 +76,7 @@ def main(args):
     print(f"Med num:{len(med_voc.idx2word)}")
 
     # frequency statistic
+    # NDC 코드 등장 횟수
     med_count = defaultdict(int)
     for patient in data:
         for adm in patient:
@@ -85,6 +86,7 @@ def main(args):
     ## rare first
     for i in range(len(data)):
         for j in range(len(data[i])):
+            # 등장 비율이 낮은 순서로 정렬
             cur_medications = sorted(data[i][j][2], key=lambda x:med_count[x])
             data[i][j][2] = cur_medications
 
@@ -169,6 +171,11 @@ def main(args):
                     dec_disease, stay_disease, dec_disease_mask, stay_disease_mask, \
                         dec_proc, stay_proc, dec_proc_mask, stay_proc_mask = data
 
+            # END_TOKEN = voc_size[2] + 1
+            # DIAG_PAD_TOKEN = voc_size[0] + 2
+            # PROC_PAD_TOKEN = voc_size[1] + 2
+            # MED_PAD_TOKEN = voc_size[2] + 2
+            # SOS_TOKEN = voc_size[2]
             diseases = pad_num_replace(diseases, -1, DIAG_PAD_TOKEN).to(device)
             procedures = pad_num_replace(procedures, -1, PROC_PAD_TOKEN).to(device)
             dec_disease = pad_num_replace(dec_disease, -1, DIAG_PAD_TOKEN).to(device)
@@ -183,9 +190,14 @@ def main(args):
             stay_disease_mask = stay_disease_mask.to(device)
             dec_proc_mask = dec_proc_mask.to(device)
             stay_proc_mask = stay_proc_mask.to(device)
+            
+            # (batch_size, max_visit_num, max_med_num, 64)
             output_logits = model(diseases, procedures, medications, d_mask_matrix, p_mask_matrix, m_mask_matrix, seq_length, dec_disease, stay_disease, dec_disease_mask, stay_disease_mask,
                 dec_proc, stay_proc, dec_proc_mask, stay_proc_mask)
+            
+            # 실제 NDC 데이터, model 출력 embedding, 배치별 시퀀스 길이, 환자별 NDC 약물 개수, NDC 약물 최대 개수 + 2, NDC 약물 최대 개수 + 1
             labels, predictions = output_flatten(medications, output_logits, seq_length, m_length_matrix, voc_size[2] + 2, END_TOKEN, device, max_len=args.max_len)
+            
             loss = F.nll_loss(predictions, labels.long())
             optimizer.zero_grad()
             loss.backward()

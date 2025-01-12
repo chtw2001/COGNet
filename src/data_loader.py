@@ -110,6 +110,7 @@ def pad_batch(batch):
 
 
 def pad_batch_v2_train(batch):
+    # 배치의 시퀀스별 길이
     seq_length = torch.tensor([len(data) for data in batch])
     batch_size = len(batch)
     max_seq = max(seq_length)
@@ -131,9 +132,11 @@ def pad_batch_v2_train(batch):
         d_dec_list_buf, d_stay_list_buf = [], []
         p_dec_list_buf, p_stay_list_buf = [], []
         for idx, seq in enumerate(data):
+            # 약물 길이
             d_buf.append(len(seq[0]))
             p_buf.append(len(seq[1]))
             m_buf.append(len(seq[2]))
+            # 현재 시퀀스(반복)의 최대 약물 길이
             d_max_num = max(d_max_num, len(seq[0]))
             p_max_num = max(p_max_num, len(seq[1]))
             m_max_num = max(m_max_num, len(seq[2]))
@@ -149,27 +152,37 @@ def pad_batch_v2_train(batch):
                 last_d = set(data[idx-1][0])
                 stay_list = list(cur_d & last_d)
                 dec_list = list(last_d - cur_d)
+                # 이전 시퀀스와의 차집합
                 d_dec_list_buf.append(dec_list)
+                # 이전 시퀀스와의 교집합
                 d_stay_list_buf.append(stay_list)
 
                 cur_p = set(seq[1])
                 last_p = set(data[idx-1][1])
                 proc_stay_list = list(cur_p & last_p)
                 proc_dec_list = list(last_p - cur_p)
+                # 이전 시퀀스와의 차집합
                 p_dec_list_buf.append(proc_dec_list)
+                # 이전 시퀀스와의 교집합
                 p_stay_list_buf.append(proc_stay_list)
+                
+        # 환자별 ICD9_CODE, PRO_CODE, NDC 각각 약물의 길이
         d_length_matrix.append(d_buf)
         p_length_matrix.append(p_buf)
         m_length_matrix.append(m_buf)
+        # dec -> 환자별 약물 차집합. 없어진 것
+        # stay -> 환자별 약물 교집합. 유지되는 것
         d_dec_list.append(d_dec_list_buf)
         d_stay_list.append(d_stay_list_buf)
         p_dec_list.append(p_dec_list_buf)
         p_stay_list.append(p_stay_list_buf)
 
     # 生成m_mask_matrix
+    # (batch_size, 환자의 최대 시퀀스, 환자의 최대 NDC 개수)
     m_mask_matrix = torch.full((batch_size, max_seq, m_max_num), -1e9)
     for i in range(batch_size):
         for j in range(len(m_length_matrix[i])):
+            # 환자 시퀀스별 실제 NDC 인덱스에 0으로 세팅. 나머지는 매우 작은 값
             m_mask_matrix[i, j, :m_length_matrix[i][j]] = 0.
 
     # 生成d_mask_matrix
@@ -191,8 +204,10 @@ def pad_batch_v2_train(batch):
     stay_disease_mask = torch.full((batch_size, max_seq, d_max_num), -1e9)
     for b_id, (dec_seqs, stay_seqs) in enumerate(zip(d_dec_list, d_stay_list)):
         for s_id, (dec_adm, stay_adm) in enumerate(zip(dec_seqs, stay_seqs)):
+            # tensor -> 차집합, 교집합 개수만큼 앞에서부터 실제 인덱스 tensor 삽입. 나머지는 -1
             dec_disease_tensor[b_id, s_id, :len(dec_adm)] = torch.tensor(dec_adm)
             stay_disease_tensor[b_id, s_id, :len(stay_adm)] = torch.tensor(stay_adm)
+            # mask -> 차집합 개수만큼 앞에서부터 0 삽입. 나머지는 매우 작은 값
             dec_disease_mask[b_id, s_id, :len(dec_adm)] = 0.
             stay_disease_mask[b_id, s_id, :len(dec_adm)] = 0.
 
@@ -217,6 +232,7 @@ def pad_batch_v2_train(batch):
     for b_id, data in enumerate(batch):
         for s_id, adm in enumerate(data):
             # adm部分的数据按照disease、procedure、medication排序
+            # ICD9_CODE, PRO_CODE, NDC 의 개수만큼 앞에서부터 실제 ICD9_CODE 인덱스 삽입
             disease_tensor[b_id, s_id, :len(adm[0])] = torch.tensor(adm[0])
             procedure_tensor[b_id, s_id, :len(adm[1])] = torch.tensor(adm[1])
             # dynamic shuffle
